@@ -1,1 +1,11 @@
 rootProject.name = 'db-scheduler-test'
+
+// Enable build cache
+buildCache {
+    local {
+        enabled = true
+        directory = new File(rootDir, '.gradle/build-cache')
+    }
+}
+
+
