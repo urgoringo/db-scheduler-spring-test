@@ -7,37 +7,22 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 
 @Component
-public class TimeMachine {
+public class DbSchedulerTimeMachine {
     private final JdbcTemplate jdbcTemplate;
     private final Scheduler scheduler;
 
-    public TimeMachine(JdbcTemplate jdbcTemplate, Scheduler scheduler) {
+    public DbSchedulerTimeMachine(JdbcTemplate jdbcTemplate, Scheduler scheduler) {
         this.jdbcTemplate = jdbcTemplate;
         this.scheduler = scheduler;
     }
 
     public void shiftTimeBy(Duration duration) {
-        int dueTaskCount = countDueTasks(duration);
-
-        if (dueTaskCount == 0) {
+        if (countDueTasks(duration) == 0) {
             return;
         }
 
-        jdbcTemplate.update("""
-                UPDATE scheduled_tasks
-                SET execution_time = NOW()
-                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""", duration.getSeconds());
-
+        updateExecutionTimeForTasksThatWereScheduledWithin(duration);
         waitForAllDueTasksToComplete();
-    }
-
-    private int countDueTasks(Duration duration) {
-        return jdbcTemplate.queryForObject("""
-                SELECT COUNT(*)
-                FROM scheduled_tasks
-                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""",
-                Integer.class,
-                duration.getSeconds());
     }
 
     private void waitForAllDueTasksToComplete() {
@@ -54,17 +39,36 @@ public class TimeMachine {
                 throw new RuntimeException("Interrupted while waiting for tasks to complete", e);
             }
 
-            int dueTasks = jdbcTemplate.queryForObject("""
-                    SELECT COUNT(*)
-                    FROM scheduled_tasks
-                    WHERE execution_time <= NOW()
-                    AND picked = FALSE""", Integer.class);
-
-            if (dueTasks == 0) {
+            if (countDueTasks() == 0) {
                 return;
             }
         }
 
         throw new RuntimeException("Timeout waiting for tasks to complete");
     }
+
+    private int countDueTasks() {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM scheduled_tasks
+                WHERE execution_time <= NOW()
+                AND picked = FALSE""", Integer.class);
+    }
+
+    private void updateExecutionTimeForTasksThatWereScheduledWithin(Duration duration) {
+        jdbcTemplate.update("""
+                UPDATE scheduled_tasks
+                SET execution_time = NOW()
+                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""", duration.getSeconds());
+    }
+
+    private int countDueTasks(Duration duration) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM scheduled_tasks
+                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""",
+                Integer.class,
+                duration.getSeconds());
+    }
+
 }

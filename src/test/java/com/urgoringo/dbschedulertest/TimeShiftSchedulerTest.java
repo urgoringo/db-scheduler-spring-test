@@ -18,7 +18,6 @@ import javax.sql.DataSource;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -45,7 +44,7 @@ class TimeShiftSchedulerTest {
     private RecurringTask<Void> testRecurringTask;
 
     @Autowired
-    TimeMachine timeMachine;
+    DbSchedulerTimeMachine timeMachine;
 
     @TestConfiguration
     static class TestTaskConfiguration {
