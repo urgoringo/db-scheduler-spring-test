@@ -13,8 +13,8 @@ import java.util.Map;
 
 @Component
 public class TimeMachine {
-    private JdbcTemplate jdbcTemplate;
-    private Scheduler scheduler;
+    private final JdbcTemplate jdbcTemplate;
+    private final Scheduler scheduler;
 
     public TimeMachine(JdbcTemplate jdbcTemplate, Scheduler scheduler) {
         this.jdbcTemplate = jdbcTemplate;
@@ -65,13 +65,13 @@ public class TimeMachine {
                 throw new RuntimeException("Interrupted while waiting for tasks to complete", e);
             }
 
-            Integer dueTasks = jdbcTemplate.queryForObject("""
+            int dueTasks = jdbcTemplate.queryForObject("""
                     SELECT COUNT(*)
                     FROM scheduled_tasks
                     WHERE execution_time <= NOW()
                     AND picked = FALSE""", Integer.class);
 
-            if (dueTasks != null && dueTasks == 0) {
+            if (dueTasks == 0) {
                 return;
             }
         }
