@@ -5,9 +5,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Component
 public class TimeMachine {
@@ -20,9 +17,9 @@ public class TimeMachine {
     }
 
     public void shiftTimeBy(Duration duration) {
-        Map<String, Instant> dueTasksBeforeShift = getDueTasksWithExecutionTimes(duration);
+        int dueTaskCount = countDueTasks(duration);
 
-        if (dueTasksBeforeShift.isEmpty()) {
+        if (dueTaskCount == 0) {
             return;
         }
 
@@ -34,19 +31,13 @@ public class TimeMachine {
         waitForAllDueTasksToComplete();
     }
 
-    private Map<String, Instant> getDueTasksWithExecutionTimes(Duration duration) {
-        return jdbcTemplate.query("""
-                SELECT task_name, task_instance, execution_time
+    private int countDueTasks(Duration duration) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
                 FROM scheduled_tasks
                 WHERE execution_time <= DATEADD('SECOND', ?, NOW())""",
-                (rs, rowNum) -> {
-                    String taskKey = rs.getString("task_name") + ":" + rs.getString("task_instance");
-                    Instant executionTime = rs.getTimestamp("execution_time").toInstant();
-                    return Map.entry(taskKey, executionTime);
-                },
-                duration.getSeconds())
-                .stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                Integer.class,
+                duration.getSeconds());
     }
 
     private void waitForAllDueTasksToComplete() {
