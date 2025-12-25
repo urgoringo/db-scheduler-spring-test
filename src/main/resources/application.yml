@@ -36,7 +36,7 @@ db-scheduler:
   enabled: true
   table-name: scheduled_tasks
   immediate-execution-enabled: true
-  polling-interval: 10s
+  polling-interval: 10ms
   threads: 10
   heartbeat-interval: 5m
   missed-heartbeats-limit: 6

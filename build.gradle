@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.0'
+    id 'org.springframework.boot' version '3.5.9'
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -24,9 +24,9 @@ dependencies {
     // db-scheduler
     implementation 'com.github.kagkarlsson:db-scheduler-spring-boot-starter:16.6.0'
     
-    // Database migrations - use Spring Boot starter for auto-configuration
-    implementation 'org.springframework.boot:spring-boot-starter-flyway'
-
+    // Database migrations
+    implementation 'org.flywaydb:flyway-core'
+    
     // Database
     runtimeOnly 'com.h2database:h2'
     
