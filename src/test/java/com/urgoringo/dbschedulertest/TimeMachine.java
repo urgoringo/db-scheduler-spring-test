@@ -4,12 +4,10 @@ import com.github.kagkarlsson.scheduler.Scheduler;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 public class TimeMachine {
@@ -37,18 +35,18 @@ public class TimeMachine {
     }
 
     private Map<String, Instant> getDueTasksWithExecutionTimes(Duration duration) {
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+        return jdbcTemplate.query("""
                 SELECT task_name, task_instance, execution_time
                 FROM scheduled_tasks
-                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""", duration.getSeconds());
-
-        Map<String, Instant> tasks = new HashMap<>();
-        for (Map<String, Object> row : rows) {
-            String taskKey = row.get("task_name") + ":" + row.get("task_instance");
-            Instant executionTime = ((Timestamp) row.get("execution_time")).toInstant();
-            tasks.put(taskKey, executionTime);
-        }
-        return tasks;
+                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""",
+                (rs, rowNum) -> {
+                    String taskKey = rs.getString("task_name") + ":" + rs.getString("task_instance");
+                    Instant executionTime = rs.getTimestamp("execution_time").toInstant();
+                    return Map.entry(taskKey, executionTime);
+                },
+                duration.getSeconds())
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     private void waitForAllDueTasksToComplete() {
