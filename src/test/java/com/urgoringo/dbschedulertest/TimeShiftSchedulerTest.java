@@ -1,6 +1,7 @@
 package com.urgoringo.dbschedulertest;
 
 import com.github.kagkarlsson.scheduler.Scheduler;
+import com.github.kagkarlsson.scheduler.Clock;
 import com.github.kagkarlsson.scheduler.task.helper.OneTimeTask;
 import com.github.kagkarlsson.scheduler.task.helper.RecurringTask;
 import com.github.kagkarlsson.scheduler.task.helper.Tasks;
@@ -46,8 +47,16 @@ class TimeShiftSchedulerTest {
     @Autowired
     DbSchedulerTimeMachine timeMachine;
 
+    @Autowired
+    Clock clock;
+
     @TestConfiguration
     static class TestTaskConfiguration {
+        @Bean
+        public Clock testClock() {
+            return new TestClockAdapter();
+        }
+
         @Bean
         public OneTimeTask<Void> timeShiftTask() {
             return Tasks
@@ -76,14 +85,17 @@ class TimeShiftSchedulerTest {
     @Test
     void shouldExecuteTaskAfterTimeShift() {
         String taskId = "time-shift-test-" + System.currentTimeMillis();
+        TestClockAdapter clockAdapter = (TestClockAdapter) clock;
+        TestClock testClock = clockAdapter.getTestClock();
         
         scheduler.schedule(
                 timeShiftTask.instance(taskId),
-                Instant.now().plus(2, ChronoUnit.HOURS)
+                testClock.instant().plus(2, ChronoUnit.HOURS)
         );
 
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-        timeMachine.shiftTimeBy(Duration.ofHours(2));
+        testClock.shiftTimeBy(Duration.ofHours(2));
+        scheduler.triggerCheckForDueExecutions();
 
         await()
                 .untilAsserted(() -> {
@@ -103,10 +115,12 @@ class TimeShiftSchedulerTest {
     void shouldExecuteRecurringTaskAfterTimeShift() {
         String taskId = "recurring-test-" + System.currentTimeMillis();
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        TestClockAdapter clockAdapter = (TestClockAdapter) clock;
+        TestClock testClock = clockAdapter.getTestClock();
 
         scheduler.schedule(
                 testRecurringTask.instance(taskId),
-                Instant.now().plus(15, ChronoUnit.SECONDS)
+                testClock.instant().plus(15, ChronoUnit.SECONDS)
         );
 
         Instant executionTimeBeforeShift = jdbcTemplate.queryForObject(
@@ -114,9 +128,10 @@ class TimeShiftSchedulerTest {
                 Instant.class,
                 taskId
         );
-        assertThat(executionTimeBeforeShift).isAfter(Instant.now().plus(10, ChronoUnit.SECONDS));
+        assertThat(executionTimeBeforeShift).isAfter(testClock.instant().plus(10, ChronoUnit.SECONDS));
 
-        timeMachine.shiftTimeBy(Duration.ofSeconds(15));
+        testClock.shiftTimeBy(Duration.ofSeconds(15));
+        scheduler.triggerCheckForDueExecutions();
 
         await()
                 .untilAsserted(() -> {
