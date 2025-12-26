@@ -1,11 +1,11 @@
 package com.urgoringo.dbschedulertest;
 
 import com.github.kagkarlsson.scheduler.Scheduler;
-import com.github.kagkarlsson.scheduler.Clock;
 import com.github.kagkarlsson.scheduler.task.helper.OneTimeTask;
 import com.github.kagkarlsson.scheduler.task.helper.RecurringTask;
 import com.github.kagkarlsson.scheduler.task.helper.Tasks;
 import com.github.kagkarlsson.scheduler.task.schedule.FixedDelay;
+import com.github.kagkarlsson.scheduler.testhelper.SettableClock;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,8 +14,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.lang.Nullable;
 
-import javax.sql.DataSource;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -29,11 +29,7 @@ import static org.awaitility.Awaitility.await;
 class TimeShiftSchedulerTest {
 
     private static final Logger log = LoggerFactory.getLogger(TimeShiftSchedulerTest.class);
-    private static final ConcurrentHashMap<String, Boolean> executionTracker = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, AtomicInteger> executionCounter = new ConcurrentHashMap<>();
-
-    @Autowired
-    private DataSource dataSource;
 
     @Autowired
     private Scheduler scheduler;
@@ -45,24 +41,19 @@ class TimeShiftSchedulerTest {
     private RecurringTask<Void> testRecurringTask;
 
     @Autowired
-    DbSchedulerTimeMachine timeMachine;
+    SettableClock clock;
 
     @Autowired
-    Clock clock;
+    JdbcTemplate jdbcTemplate;
 
     @TestConfiguration
     static class TestTaskConfiguration {
-        @Bean
-        public Clock testClock() {
-            return new TestClockAdapter();
-        }
-
         @Bean
         public OneTimeTask<Void> timeShiftTask() {
             return Tasks
                     .oneTime("time-shift-task", Void.class)
                     .execute((instance, ctx) -> {
-                        executionTracker.put(instance.getId(), true);
+                        executionCounter.computeIfAbsent(instance.getId(), k -> new AtomicInteger(0)).incrementAndGet();
                         log.info("Task executed: {}", instance.getId());
                     });
         }
@@ -74,9 +65,8 @@ class TimeShiftSchedulerTest {
                     .execute((instance, ctx) -> {
                         String taskId = instance.getId();
                         executionCounter.computeIfAbsent(taskId, k -> new AtomicInteger(0)).incrementAndGet();
-                        executionTracker.put(taskId, true);
-                        log.info("Recurring task executed: {} (count: {})", 
-                                taskId, 
+                        log.info("Recurring task executed: {} (count: {})",
+                                taskId,
                                 executionCounter.get(taskId).get());
                     });
         }
@@ -85,81 +75,80 @@ class TimeShiftSchedulerTest {
     @Test
     void shouldExecuteTaskAfterTimeShift() {
         String taskId = "time-shift-test-" + System.currentTimeMillis();
-        TestClockAdapter clockAdapter = (TestClockAdapter) clock;
-        TestClock testClock = clockAdapter.getTestClock();
-        
+
         scheduler.schedule(
                 timeShiftTask.instance(taskId),
-                testClock.instant().plus(2, ChronoUnit.HOURS)
+                clock.now().plus(2, ChronoUnit.HOURS)
         );
 
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-        testClock.shiftTimeBy(Duration.ofHours(2));
-        scheduler.triggerCheckForDueExecutions();
+        shiftTime(Duration.ofHours(2));
 
-        await()
-                .untilAsserted(() -> {
-                    assertThat(executionTracker.get(taskId))
-                            .isTrue();
-                });
+        assertThat(executionCounter.get(taskId).get()).isEqualTo(1);
 
-        Integer remainingTasks = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM scheduled_tasks WHERE task_instance = ?",
-                Integer.class,
-                taskId
-        );
+        Integer remainingTasks = queryTaskCount(taskId);
         assertThat(remainingTasks).isEqualTo(0);
     }
 
     @Test
     void shouldExecuteRecurringTaskAfterTimeShift() {
         String taskId = "recurring-test-" + System.currentTimeMillis();
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-        TestClockAdapter clockAdapter = (TestClockAdapter) clock;
-        TestClock testClock = clockAdapter.getTestClock();
 
         scheduler.schedule(
                 testRecurringTask.instance(taskId),
-                testClock.instant().plus(15, ChronoUnit.SECONDS)
+                clock.now().plus(15, ChronoUnit.SECONDS)
         );
 
-        Instant executionTimeBeforeShift = jdbcTemplate.queryForObject(
-                "SELECT execution_time FROM scheduled_tasks WHERE task_instance = ?",
-                Instant.class,
-                taskId
-        );
-        assertThat(executionTimeBeforeShift).isAfter(testClock.instant().plus(10, ChronoUnit.SECONDS));
+        Instant executionTimeBeforeShift = queryTaskExecutionTime(jdbcTemplate, taskId);
+        assertThat(executionTimeBeforeShift).isAfter(clock.now().plus(10, ChronoUnit.SECONDS));
 
-        testClock.shiftTimeBy(Duration.ofSeconds(15));
-        scheduler.triggerCheckForDueExecutions();
-
-        await()
-                .untilAsserted(() -> {
-                    assertThat(executionTracker.get(taskId))
-                            .as("Recurring task should have been executed")
-                            .isTrue();
-                });
+        shiftTime(Duration.ofSeconds(15));
 
         assertThat(executionCounter.get(taskId).get())
-                .as("Task should have been executed exactly once")
+                .as("Recurring task should have been executed")
                 .isEqualTo(1);
 
-        Integer taskCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM scheduled_tasks WHERE task_instance = ?",
-                Integer.class,
-                taskId
-        );
+        Integer taskCount = queryTaskCount(taskId);
         assertThat(taskCount)
                 .as("Recurring task should still exist in database")
                 .isEqualTo(1);
 
-        Instant executionTimeAfterShift = jdbcTemplate.queryForObject(
+        Instant executionTimeAfterShift = queryTaskExecutionTime(jdbcTemplate, taskId);
+        assertThat(executionTimeAfterShift)
+                .as("Recurring task should be rescheduled for the future")
+                .isAfter(executionTimeBeforeShift);
+    }
+
+    private void shiftTime(Duration toAdd) {
+        clock.tick(toAdd);
+        scheduler.triggerCheckForDueExecutions();
+        await()
+                .pollInterval(Duration.ofMillis(10))
+                .until(() -> countDueTasks() == 0);
+    }
+
+    @Nullable
+    private Integer queryTaskCount(String taskId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM scheduled_tasks WHERE task_instance = ?",
+                Integer.class,
+                taskId
+        );
+    }
+
+    private int countDueTasks() {
+        return jdbcTemplate.queryForObject("""
+                        SELECT COUNT(*)
+                        FROM scheduled_tasks
+                        WHERE execution_time <= NOW()""",
+                Integer.class);
+    }
+
+    @Nullable
+    private static Instant queryTaskExecutionTime(JdbcTemplate jdbcTemplate, String taskId) {
+        return jdbcTemplate.queryForObject(
                 "SELECT execution_time FROM scheduled_tasks WHERE task_instance = ?",
                 Instant.class,
                 taskId
         );
-        assertThat(executionTimeAfterShift)
-                .as("Recurring task should be rescheduled for the future")
-                .isAfter(executionTimeBeforeShift);
     }
 }

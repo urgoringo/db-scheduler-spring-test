@@ -16,16 +16,7 @@ public class DbSchedulerTimeMachine {
         this.scheduler = scheduler;
     }
 
-    public void shiftTimeBy(Duration duration) {
-        if (countDueTasks(duration) == 0) {
-            return;
-        }
-
-        updateExecutionTimeForTasksThatWereScheduledWithin(duration);
-        waitForAllDueTasksToComplete();
-    }
-
-    private void waitForAllDueTasksToComplete() {
+    public void waitForAllDueTasksToComplete() {
         long startTime = System.currentTimeMillis();
         long timeoutMs = 30000;
 
@@ -55,18 +46,18 @@ public class DbSchedulerTimeMachine {
                 AND picked = FALSE""", Integer.class);
     }
 
-    private void updateExecutionTimeForTasksThatWereScheduledWithin(Duration duration) {
-        jdbcTemplate.update("""
-                UPDATE scheduled_tasks
-                SET execution_time = NOW()
-                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""", duration.getSeconds());
-    }
+//    private void updateExecutionTimeForTasksThatWereScheduledWithin(Duration duration) {
+//        jdbcTemplate.update("""
+//                UPDATE scheduled_tasks
+//                SET execution_time = NOW()
+//                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""", duration.getSeconds());
+//    }
 
     private int countDueTasks(Duration duration) {
         return jdbcTemplate.queryForObject("""
-                SELECT COUNT(*)
-                FROM scheduled_tasks
-                WHERE execution_time <= DATEADD('SECOND', ?, NOW())""",
+                        SELECT COUNT(*)
+                        FROM scheduled_tasks
+                        WHERE execution_time <= DATEADD('SECOND', ?, NOW())""",
                 Integer.class,
                 duration.getSeconds());
     }
