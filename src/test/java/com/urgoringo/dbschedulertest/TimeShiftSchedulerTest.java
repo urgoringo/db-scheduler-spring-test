@@ -139,8 +139,11 @@ class TimeShiftSchedulerTest {
         return jdbcTemplate.queryForObject("""
                         SELECT COUNT(*)
                         FROM scheduled_tasks
-                        WHERE execution_time <= NOW()""",
-                Integer.class);
+                        WHERE execution_time <= ?
+                        AND picked = FALSE""",
+                Integer.class,
+                clock.now()
+        );
     }
 
     @Nullable

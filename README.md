@@ -1,17 +1,18 @@
 # DB-Scheduler Test Application
 
-A Spring Boot 4.0 application demonstrating [db-scheduler](https://github.com/kagkarlsson/db-scheduler) integration.
+A Spring Boot 3.5 application demonstrating [db-scheduler](https://github.com/kagkarlsson/db-scheduler) integration.
 
 ## Features
 
-- **Spring Boot 4.0.0** with Java 25
+- **Spring Boot 3.5.9** with Java 25
 - **db-scheduler 16.6.0** - Persistent task scheduling with database-backed storage
 - **H2 Database** - In-memory database for quick testing
+- **Flyway** - Database migration management
 - **Gradle 9.0** - Latest Gradle version with Java 25 support
 - **Example Tasks**:
   - Recurring heartbeat task (every 30 seconds)
   - Recurring cleanup task (every 5 minutes)
-  - One-time email task (schedulable via REST API)
+  - One-time email task (can be scheduled programmatically)
 
 ## Running the Application
 
@@ -35,28 +36,9 @@ Access the H2 database console at: `http://localhost:8080/h2-console`
 - **Username**: `sa`
 - **Password**: (empty)
 
-## API Endpoints
-
-### Schedule an Email Task
-
-```bash
-# Schedule email with default 10 second delay
-curl -X POST "http://localhost:8080/api/tasks/schedule-email?email=test@example.com"
-
-# Schedule email with custom delay (in seconds)
-curl -X POST "http://localhost:8080/api/tasks/schedule-email?email=test@example.com&delaySeconds=30"
-```
-
 ## Testing
 
 The project includes comprehensive tests demonstrating db-scheduler functionality:
-
-### Basic Context Test
-```bash
-./gradlew test --tests DbSchedulerTestApplicationTests
-```
-
-Verifies the Spring application context loads correctly with all db-scheduler beans.
 
 ### Time-Shift Scheduler Test
 ```bash
@@ -69,47 +51,16 @@ Advanced test that:
 3. Verifies the task executes automatically
 4. Confirms proper cleanup after execution
 
-This test demonstrates how to test time-dependent scheduler behavior without waiting for real time to pass. See [TIME_SHIFT_TEST.md](TIME_SHIFT_TEST.md) for detailed documentation.
+This test demonstrates how to test time-dependent scheduler behavior without waiting for real time to pass. The test uses `SettableClock` to manipulate time and verify task execution.
 
-**Test execution time**: ~1.3 seconds
+The test covers:
+- One-time task execution after time shift
+- Recurring task execution and rescheduling after time shift
 
 ### Run All Tests
 ```bash
 ./gradlew test
 ```
-
-## db-scheduler Configuration
-
-Configuration in `application.yml`:
-
-- **Table Name**: `scheduled_tasks`
-- **Polling Interval**: 10 seconds
-- **Thread Pool Size**: 10 threads
-- **Immediate Execution**: Enabled
-
-## Task Types
-
-### Recurring Tasks
-
-Defined in `ScheduledTasksConfiguration`:
-
-1. **Heartbeat Task** - Executes every 30 seconds
-2. **Cleanup Task** - Executes every 5 minutes
-
-### One-Time Tasks
-
-Defined in `TaskSchedulerService`:
-
-1. **Email Task** - Sends an email at a specific time (demo)
-
-## Database Schema
-
-db-scheduler automatically creates the `scheduled_tasks` table to store:
-
-- Task instances
-- Execution times
-- Task data (serialized)
-- Execution status
 
 ## Building the Project
 
@@ -128,12 +79,13 @@ db-scheduler automatically creates the `scheduled_tasks` table to store:
 
 Key dependencies:
 
-- `spring-boot-starter-web` - REST API
-- `spring-boot-starter-data-jpa` - Database access
+- `spring-boot-starter-data-jdbc` - Database access
 - `db-scheduler-spring-boot-starter` - db-scheduler integration
+- `flyway-core` - Database migration management
 - `h2` - In-memory database
+- `awaitility` - Testing async behavior
 
 ## Learn More
 
 - [db-scheduler Documentation](https://github.com/kagkarlsson/db-scheduler)
-- [Spring Boot 4.0 Documentation](https://docs.spring.io/spring-boot/docs/4.0.0/reference/)
+- [Spring Boot 3.5 Documentation](https://docs.spring.io/spring-boot/docs/3.5.9/reference/)
