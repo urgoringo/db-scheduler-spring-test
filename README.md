@@ -8,7 +8,7 @@ A Spring Boot 3.5 application demonstrating [db-scheduler](https://github.com/ka
 - **db-scheduler 16.6.0** - Persistent task scheduling with database-backed storage
 - **H2 Database** - In-memory database for quick testing
 - **Flyway** - Database migration management
-- **Gradle 9.0** - Latest Gradle version with Java 25 support
+- **Gradle 9.2** - Latest Gradle version with Java 25 support
 - **Example Tasks**:
   - Recurring heartbeat task (every 30 seconds)
   - Recurring cleanup task (every 5 minutes)
