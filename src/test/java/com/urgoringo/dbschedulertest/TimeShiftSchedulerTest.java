@@ -41,7 +41,7 @@ class TimeShiftSchedulerTest {
     private RecurringTask<Void> testRecurringTask;
 
     @Autowired
-    SettableClock clock;
+    TimeMachine timeMachine;
 
     @Autowired
     JdbcTemplate jdbcTemplate;
@@ -78,11 +78,12 @@ class TimeShiftSchedulerTest {
 
         scheduler.schedule(
                 timeShiftTask.instance(taskId),
-                clock.now().plus(2, ChronoUnit.HOURS)
+                timeMachine.now().plus(2, ChronoUnit.HOURS)
         );
 
-        shiftTime(Duration.ofHours(2));
+        timeMachine.shiftTime(Duration.ofHours(2));
 
+        assertThat(executionCounter).containsKey(taskId);
         assertThat(executionCounter.get(taskId).get()).isEqualTo(1);
 
         Integer remainingTasks = queryTaskCount(taskId);
@@ -95,14 +96,15 @@ class TimeShiftSchedulerTest {
 
         scheduler.schedule(
                 testRecurringTask.instance(taskId),
-                clock.now().plus(15, ChronoUnit.SECONDS)
+                timeMachine.now().plus(15, ChronoUnit.SECONDS)
         );
 
         Instant executionTimeBeforeShift = queryTaskExecutionTime(jdbcTemplate, taskId);
-        assertThat(executionTimeBeforeShift).isAfter(clock.now().plus(10, ChronoUnit.SECONDS));
+        assertThat(executionTimeBeforeShift).isAfter(timeMachine.now().plus(10, ChronoUnit.SECONDS));
 
-        shiftTime(Duration.ofSeconds(15));
+        timeMachine.shiftTime(Duration.ofSeconds(15));
 
+        assertThat(executionCounter).containsKey(taskId);
         assertThat(executionCounter.get(taskId).get())
                 .as("Recurring task should have been executed")
                 .isEqualTo(1);
@@ -118,30 +120,12 @@ class TimeShiftSchedulerTest {
                 .isAfter(executionTimeBeforeShift);
     }
 
-    private void shiftTime(Duration toAdd) {
-        clock.tick(toAdd);
-        scheduler.triggerCheckForDueExecutions();
-        await()
-                .pollInterval(Duration.ofMillis(10))
-                .until(() -> countDueTasks() == 0);
-    }
-
     @Nullable
     private Integer queryTaskCount(String taskId) {
         return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM scheduled_tasks WHERE task_instance = ?",
                 Integer.class,
                 taskId
-        );
-    }
-
-    private int countDueTasks() {
-        return jdbcTemplate.queryForObject("""
-                        SELECT COUNT(*)
-                        FROM scheduled_tasks
-                        WHERE execution_time <= ?""",
-                Integer.class,
-                clock.now()
         );
     }
 
